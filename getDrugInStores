@@ -1,0 +1,48 @@
+import requests
+import json
+import re
+from lxml import html
+
+linkFile = open("link_list.txt", "r")
+fullResultFile = open("fullresultdata.txt", "w+")
+shortResultFile = open("shortresultdata.txt", "w+")
+failedLinks = open("failedlinks.txt", "w+")
+
+
+def getDrugInStores(link):
+  response = requests.get(link)
+  if response.status_code != 200:
+    return None
+  raw = html.fromstring(response.text)
+  drugName = raw.xpath('//input[@name="drug-name"]/@value')[0]
+  raw2 = raw.xpath('//script[contains(., "drugInStores")]/text()')
+  data = re.search(r"var drugInStores = (.*?);\\n", str(raw2)).group(1)
+  data = data.replace("\\\\", "\\").replace("\\x", "")
+  data = json.loads(data)
+  data["drugName"] = drugName
+  return data
+
+def getParsedResult(text):
+  stores = text["stores"]
+  result = {"drugName":text["drugName"],"stores":[]}
+  for store in stores:
+    store = {"id":store["id"],"drugCount":store["count"],"drugPrice":float(store["parts"][0]["price"])}
+    result["stores"].append(store)
+  return result
+
+links = linkFile.readlines()
+for link in links:
+  result = getDrugInStores(link)
+  if result == None:
+    print("Something wrong with response code! This link " + link + "will be written into special file failedLinks.txt")
+    failedLinks.write(link + "\n")
+    continue
+  shortResult = getParsedResult(result)
+  print("Writting full result data into fullResultFile.txt")
+  fullResultFile.write(str(result) + "\n")
+  print("Writting short result data into shortResultFile.txt")
+  shortResultFile.write(str(shortResult) + "\n")
+linkFile.close()
+failedLinks.close()
+fullResultFile.close()
+shortResultFile.close()
